@@ -11,6 +11,16 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -30,6 +40,8 @@ export function ProductsManager() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<api.Product | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<api.Product | null>(null);
   const [formData, setFormData] = useState({
     productName: "",
     productCategory: "ID & Cards",
@@ -116,11 +128,18 @@ export function ProductsManager() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this product?")) return;
+  const handleDeleteClick = (product: api.Product) => {
+    setProductToDelete(product);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!productToDelete) return;
     try {
-      await api.deleteProduct(id);
+      await api.deleteProduct(productToDelete.productId);
       toast.success("Product deleted successfully!");
+      setIsDeleteDialogOpen(false);
+      setProductToDelete(null);
       loadProducts();
     } catch (error) {
       toast.error("Failed to delete product");
@@ -234,7 +253,7 @@ export function ProductsManager() {
                       <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(product)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(product.productId)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(product)}>
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
                     </div>
@@ -329,6 +348,24 @@ export function ProductsManager() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-gray-900">"{productToDelete?.productName}"</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
