@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -11,6 +11,16 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,65 +29,67 @@ import {
   TableRow,
 } from "./ui/table";
 import { Badge } from "./ui/badge";
-import { Plus, Search, Edit, Trash2, Mail, Phone } from "lucide-react";
+import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  status: "active" | "inactive";
-}
-
-const initialUsers: User[] = [
-  { id: "1", name: "BAO Administrator", email: "admin@rtu.edu.ph", phone: "+63 912-345-6789", role: "Admin", status: "active" },
-  { id: "2", name: "Maria Santos", email: "maria.santos@rtu.edu.ph", phone: "+63 912-345-6790", role: "Staff", status: "active" },
-  { id: "3", name: "Juan Dela Cruz", email: "juan.delacruz@rtu.edu.ph", phone: "+63 912-345-6791", role: "Student", status: "active" },
-  { id: "4", name: "Pedro Reyes", email: "pedro.reyes@rtu.edu.ph", phone: "+63 912-345-6792", role: "Staff", status: "active" },
-  { id: "5", name: "Anna Cruz", email: "anna.cruz@rtu.edu.ph", phone: "+63 912-345-6793", role: "Student", status: "active" },
-  { id: "6", name: "Carlo Mendoza", email: "carlo.mendoza@rtu.edu.ph", phone: "+63 912-345-6794", role: "Student", status: "inactive" },
-];
+import * as api from "../lib/api";
 
 export function UsersManager() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [students, setStudents] = useState<api.Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [formData, setFormData] = useState<Omit<User, "id">>({
-    name: "",
-    email: "",
-    phone: "",
-    role: "User",
-    status: "active",
+  const [editingStudent, setEditingStudent] = useState<api.Student | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<api.Student | null>(null);
+  const [formData, setFormData] = useState({
+    firstname: "",
+    lastname: "",
+    college: "",
+    program: "",
   });
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => {
+    loadStudents();
+  }, []);
 
-  const handleOpenDialog = (user?: User) => {
-    if (user) {
-      setEditingUser(user);
+  const loadStudents = async () => {
+    try {
+      setIsLoading(true);
+      const data = await api.getStudents();
+      setStudents(data);
+    } catch (error) {
+      toast.error("Failed to load students");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const filteredStudents = students.filter((student) => {
+    const fullName = `${student.firstname} ${student.lastname}`.toLowerCase();
+    return (
+      fullName.includes(searchTerm.toLowerCase()) ||
+      student.college.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.program.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  const handleOpenDialog = (student?: api.Student) => {
+    if (student) {
+      setEditingStudent(student);
       setFormData({
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
+        firstname: student.firstname,
+        lastname: student.lastname,
+        college: student.college,
+        program: student.program,
       });
     } else {
-      setEditingUser(null);
+      setEditingStudent(null);
       setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        role: "Student",
-        status: "active",
+        firstname: "",
+        lastname: "",
+        college: "",
+        program: "",
       });
     }
     setIsDialogOpen(true);
@@ -85,30 +97,61 @@ export function UsersManager() {
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
-    setEditingUser(null);
+    setEditingStudent(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (editingUser) {
-      setUsers(users.map((u) => (u.id === editingUser.id ? { ...formData, id: u.id } : u)));
-      toast.success("User updated successfully!");
-    } else {
-      const newUser: User = {
-        ...formData,
-        id: Date.now().toString(),
-      };
-      setUsers([...users, newUser]);
-      toast.success("User created successfully!");
+    
+    // Validate required fields
+    if (!formData.firstname || !formData.lastname || !formData.college || !formData.program) {
+      toast.error("All fields are required");
+      return;
     }
 
-    handleCloseDialog();
+    try {
+      if (editingStudent) {
+        await api.updateStudent(editingStudent.studentId, {
+          firstname: formData.firstname,
+          lastname: formData.lastname,
+          college: formData.college,
+          program: formData.program,
+        });
+        toast.success("Student updated successfully!");
+      } else {
+        await api.createStudent(
+          formData.firstname,
+          formData.lastname,
+          formData.college,
+          formData.program
+        );
+        toast.success("Student created successfully!");
+      }
+      handleCloseDialog();
+      loadStudents();
+    } catch (error) {
+      toast.error(editingStudent ? "Failed to update student" : "Failed to create student");
+      console.error(error);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setUsers(users.filter((u) => u.id !== id));
-    toast.success("User deleted successfully!");
+  const handleDeleteClick = (student: api.Student) => {
+    setStudentToDelete(student);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!studentToDelete) return;
+    try {
+      await api.deleteStudent(studentToDelete.studentId);
+      toast.success("Student deleted successfully!");
+      setIsDeleteDialogOpen(false);
+      setStudentToDelete(null);
+      loadStudents();
+    } catch (error) {
+      toast.error("Failed to delete student");
+      console.error(error);
+    }
   };
 
   return (
@@ -116,11 +159,11 @@ export function UsersManager() {
       <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-gray-900 mb-2">Users Management</h1>
-          <p className="text-gray-600">Manage RTU students, staff, and administrators in the BAO system.</p>
+          <p className="text-gray-600">Manage RTU students registered in the BAO system.</p>
         </div>
         <Button onClick={() => handleOpenDialog()} className="gap-2">
           <Plus className="w-4 h-4" />
-          Add User
+          Add Student
         </Button>
       </div>
 
@@ -129,7 +172,7 @@ export function UsersManager() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
           <Input
-            placeholder="Search users by name, email, or role..."
+            placeholder="Search students by name, college, or program..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -143,63 +186,50 @@ export function UsersManager() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>College</TableHead>
+              <TableHead>Program</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.length === 0 ? (
+            {filteredStudents.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                  No users found.
+                <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                  No students found.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredUsers.map((user) => (
-                <TableRow key={user.id}>
+              filteredStudents.map((student) => (
+                <TableRow key={student.studentId}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-blue-700">{user.name.charAt(0)}</span>
+                        <span className="text-blue-700 text-sm font-semibold">
+                          {student.firstname.charAt(0)}{student.lastname.charAt(0)}
+                        </span>
                       </div>
-                      <span className="text-gray-900">{user.name}</span>
+                      <span className="text-gray-900">{student.firstname} {student.lastname}</span>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Mail className="w-3 h-3" />
-                        {user.email}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-3 h-3" />
-                        {user.phone}
-                      </div>
-                    </div>
+                    <Badge variant="outline">{student.college}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{user.role}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={user.status === "active" ? "default" : "secondary"}>
-                      {user.status}
-                    </Badge>
+                    <span className="text-gray-600">{student.program}</span>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleOpenDialog(user)}
+                        onClick={() => handleOpenDialog(student)}
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(user.id)}
+                        onClick={() => handleDeleteClick(student)}
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
@@ -216,84 +246,85 @@ export function UsersManager() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingUser ? "Edit User" : "Create New User"}</DialogTitle>
+            <DialogTitle>{editingStudent ? "Edit Student" : "Add New Student"}</DialogTitle>
             <DialogDescription>
-              {editingUser
-                ? "Update the user information below."
-                : "Add a new user to the system."}
+              {editingStudent
+                ? "Update the student information below."
+                : "Add a new student to the system."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstname">First Name</Label>
+                  <Input
+                    id="firstname"
+                    placeholder="Juan"
+                    value={formData.firstname}
+                    onChange={(e) => setFormData({ ...formData, firstname: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastname">Last Name</Label>
+                  <Input
+                    id="lastname"
+                    placeholder="Dela Cruz"
+                    value={formData.lastname}
+                    onChange={(e) => setFormData({ ...formData, lastname: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="college">College</Label>
                 <Input
-                  id="name"
-                  placeholder="Juan Dela Cruz"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  id="college"
+                  placeholder="College of Engineering"
+                  value={formData.college}
+                  onChange={(e) => setFormData({ ...formData, college: e.target.value })}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="email">RTU Email</Label>
+                <Label htmlFor="program">Program</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="name@rtu.edu.ph"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  id="program"
+                  placeholder="Computer Science"
+                  value={formData.program}
+                  onChange={(e) => setFormData({ ...formData, program: e.target.value })}
                   required
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  placeholder="+63 912-345-6789"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <select
-                  id="role"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  required
-                >
-                  <option value="Student">Student</option>
-                  <option value="Staff">Staff</option>
-                  <option value="Admin">Admin</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <select
-                  id="status"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={formData.status}
-                  onChange={(e) =>
-                    setFormData({ ...formData, status: e.target.value as "active" | "inactive" })
-                  }
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={handleCloseDialog}>
                 Cancel
               </Button>
-              <Button type="submit">{editingUser ? "Update" : "Create"}</Button>
+              <Button type="submit">{editingStudent ? "Update" : "Create"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Student</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-gray-900">"{studentToDelete?.firstname} {studentToDelete?.lastname}"</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
