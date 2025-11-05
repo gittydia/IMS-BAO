@@ -1,0 +1,140 @@
+generator client {
+  provider = "prisma-client-py"
+  recursive_type_depth = 5
+  enable_experimental_decimal = true
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AuthUser {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique @db.VarChar(255)
+  password  String    @db.VarChar(255)
+  role      String    @db.VarChar(20)
+  createdAt DateTime  @default(now()) @map("created_at")
+  admins    Admin[]
+  students  Student[]
+
+  @@map("auth_users")
+}
+
+model Admin {
+  adminId      Int           @id @default(autoincrement()) @map("admin_id")
+  firstname    String        @db.VarChar(100)
+  lastname     String        @db.VarChar(100)
+  userId       Int?          @map("user_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  authUser     AuthUser?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@map("admins")
+}
+
+model Student {
+  studentId    Int           @id @default(autoincrement()) @map("student_id")
+  firstname    String        @db.VarChar(100)
+  lastname     String        @db.VarChar(100)
+  college      String        @db.VarChar(100)
+  program      String        @db.VarChar(100)
+  userId       Int?          @map("user_id")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  authUser     AuthUser?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  transactions Transaction[]
+
+  @@map("students")
+}
+
+model Appointment {
+  appointmentId Int      @id @default(autoincrement()) @map("appointmentid")
+  studentId     Int?     @map("student_id")
+  adminId       Int?     @map("admin_id")
+  dateApp       DateTime @map("dateapp") @db.Date
+  timeApp       DateTime @map("timeapp") @db.Time(6)
+  purpose       String   @db.VarChar(200)
+  status        String   @map("statusorder") @db.VarChar(50)
+  createdAt     DateTime @default(now()) @map("created_at")
+  admin         Admin?   @relation(fields: [adminId], references: [adminId], onDelete: Cascade)
+  student       Student? @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+
+  @@map("appointments")
+}
+
+model Product {
+  productId       Int         @id @default(autoincrement()) @map("product_id")
+  productName     String      @map("productname") @db.VarChar(150)
+  productCategory String      @map("productcategory") @db.VarChar(100)
+  price           Decimal     @db.Decimal(10, 2)
+  status          String      @map("statusorder") @db.VarChar(50)
+  quantity        Int
+  createdAt       DateTime    @default(now()) @map("created_at")
+  books           Book[]
+  orders          Order[]
+  otherGoods      OtherGood[]
+  uniforms        Uniform[]
+
+  @@map("product")
+}
+
+model Book {
+  bookId        Int      @id @default(autoincrement()) @map("bookid")
+  productId     Int      @map("product_id")
+  author        String   @db.VarChar(100)
+  professorName String   @map("professorname") @db.VarChar(100)
+  edition       String   @map("editionbook") @db.VarChar(50)
+  createdAt     DateTime @default(now()) @map("created_at")
+  product       Product  @relation(fields: [productId], references: [productId], onDelete: Cascade)
+
+  @@map("books")
+}
+
+model Uniform {
+  uniformId Int      @id @default(autoincrement()) @map("uniformid")
+  productId Int      @map("product_id")
+  sizeType  String   @map("sizetype") @db.VarChar(50)
+  gender    String   @db.VarChar(20)
+  type      String   @map("typeuni") @db.VarChar(50)
+  buyer     String   @map("bycoun") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+  product   Product  @relation(fields: [productId], references: [productId], onDelete: Cascade)
+
+  @@map("uniforms")
+}
+
+model OtherGood {
+  otherGoodId Int      @id @default(autoincrement()) @map("othergoodsid")
+  productId   Int      @map("product_id")
+  description String   @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at")
+  product     Product  @relation(fields: [productId], references: [productId], onDelete: Cascade)
+
+  @@map("othergoods")
+}
+
+model Order {
+  orderId      Int           @id @default(autoincrement()) @map("orderid")
+  productId    Int           @map("product_id")
+  dateToClaim  DateTime      @map("datetoclaim") @db.Date
+  dateClaimed  DateTime?     @map("dateclaimed") @db.Date
+  status       String        @map("statusorder") @db.VarChar(50)
+  amount       Decimal       @db.Decimal(10, 2)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  product      Product       @relation(fields: [productId], references: [productId], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("orders")
+}
+
+model Transaction {
+  transactionId Int      @id @default(autoincrement()) @map("transactionid")
+  orderId       Int      @map("orderid")
+  studentId     Int      @map("student_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  order         Order    @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
+  student       Student  @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
+
+  @@map("transactions")
+}
