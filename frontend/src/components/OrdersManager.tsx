@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -21,136 +21,84 @@ import {
 import { Badge } from "./ui/badge";
 import { Plus, Search, Edit, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
+import * as api from "../lib/api";
 
 interface OrdersManagerProps {
   userRole: string;
   userName: string;
 }
 
-interface Order {
-  id: string;
-  orderNumber: string;
-  customer: string;
-  email: string;
-  product: string;
-  quantity: number;
-  total: number;
-  status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
-  date: string;
-}
-
-const initialOrders: Order[] = [
-  {
-    id: "1",
-    orderNumber: "BAO-2025-001",
-    customer: "Juan Dela Cruz",
-    email: "juan.delacruz@rtu.edu.ph",
-    product: "RTU Student ID Card",
-    quantity: 1,
-    total: 150.00,
-    status: "delivered",
-    date: "2025-10-28",
-  },
-  {
-    id: "2",
-    orderNumber: "BAO-2025-002",
-    customer: "Maria Santos",
-    email: "maria.santos@rtu.edu.ph",
-    product: "University Uniform (Female)",
-    quantity: 2,
-    total: 1700.00,
-    status: "shipped",
-    date: "2025-11-01",
-  },
-  {
-    id: "3",
-    orderNumber: "BAO-2025-003",
-    customer: "Pedro Reyes",
-    email: "pedro.reyes@rtu.edu.ph",
-    product: "Certificate of Enrollment",
-    quantity: 3,
-    total: 150.00,
-    status: "processing",
-    date: "2025-11-02",
-  },
-  {
-    id: "4",
-    orderNumber: "BAO-2025-004",
-    customer: "Anna Cruz",
-    email: "anna.cruz@rtu.edu.ph",
-    product: "Transcript of Records",
-    quantity: 2,
-    total: 200.00,
-    status: "pending",
-    date: "2025-11-04",
-  },
-  {
-    id: "5",
-    orderNumber: "BAO-2025-005",
-    customer: "Carlo Mendoza",
-    email: "carlo.mendoza@rtu.edu.ph",
-    product: "PE Uniform Set",
-    quantity: 1,
-    total: 450.00,
-    status: "cancelled",
-    date: "2025-10-30",
-  },
-];
-
 export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders, setOrders] = useState<api.Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
-  const [formData, setFormData] = useState<Omit<Order, "id" | "orderNumber">>({
-    customer: "",
-    email: "",
-    product: "",
-    quantity: 1,
-    total: 0,
+  const [editingOrder, setEditingOrder] = useState<api.Order | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<api.Order | null>(null);
+  const [products, setProducts] = useState<api.Product[]>([]);
+  const [formData, setFormData] = useState({
+    productId: 0,
+    dateToClaim: new Date().toISOString().split("T")[0],
     status: "pending",
-    date: new Date().toISOString().split("T")[0],
+    amount: 0,
   });
 
   const statuses = ["all", "pending", "processing", "shipped", "delivered", "cancelled"];
 
+  useEffect(() => {
+    loadOrders();
+    loadProducts();
+  }, []);
+
+  const loadOrders = async () => {
+    try {
+      setIsLoading(true);
+      const data = await api.getOrders();
+      setOrders(data);
+    } catch (error) {
+      toast.error("Failed to load orders");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadProducts = async () => {
+    try {
+      const data = await api.getProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error("Failed to load products", error);
+    }
+  };
+
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.product.toLowerCase().includes(searchTerm.toLowerCase());
+      String(order.orderId).toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
 
-  const handleOpenDialog = (order?: Order) => {
+  const handleOpenDialog = (order?: api.Order) => {
     if (order) {
       setEditingOrder(order);
       setFormData({
-        customer: order.customer,
-        email: order.email,
-        product: order.product,
-        quantity: order.quantity,
-        total: order.total,
+        productId: order.productId,
+        dateToClaim: order.dateToClaim,
         status: order.status,
-        date: order.date,
+        amount: typeof order.amount === "string" ? parseFloat(order.amount) : order.amount,
       });
     } else {
       setEditingOrder(null);
       setFormData({
-        customer: "",
-        email: "",
-        product: "",
-        quantity: 1,
-        total: 0,
+        productId: 0,
+        dateToClaim: new Date().toISOString().split("T")[0],
         status: "pending",
-        date: new Date().toISOString().split("T")[0],
+        amount: 0,
       });
     }
     setIsDialogOpen(true);
@@ -161,45 +109,48 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     setEditingOrder(null);
   };
 
-  const handleViewOrder = (order: Order) => {
+  const handleViewOrder = (order: api.Order) => {
     setViewingOrder(order);
     setIsViewDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (editingOrder) {
-      setOrders(
-        orders.map((o) =>
-          o.id === editingOrder.id
-            ? { ...formData, id: o.id, orderNumber: o.orderNumber }
-            : o
-        )
-      );
-      toast.success("Order updated successfully!");
-    } else {
-      const newOrder: Order = {
-        ...formData,
-        id: Date.now().toString(),
-        orderNumber: `BAO-2025-${String(orders.length + 1).padStart(3, "0")}`,
-      };
-      setOrders([...orders, newOrder]);
-      toast.success("Order placed successfully!");
+    try {
+      if (editingOrder) {
+        await api.updateOrder(editingOrder.orderId, {
+          dateClaimed: formData.dateToClaim,
+          status: formData.status,
+        });
+        toast.success("Order updated successfully!");
+      } else {
+        await api.createOrder(formData.productId, formData.dateToClaim, formData.amount, formData.status);
+        toast.success("Order created successfully!");
+      }
+      handleCloseDialog();
+      loadOrders();
+    } catch (error) {
+      toast.error(editingOrder ? "Failed to update order" : "Failed to create order");
+      console.error(error);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDelete = (id: string) => {
-    setOrders(orders.filter((o) => o.id !== id));
-    toast.success("Order deleted successfully!");
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this order?")) return;
+    try {
+      await api.deleteOrder(id);
+      toast.success("Order deleted successfully!");
+      loadOrders();
+    } catch (error) {
+      toast.error("Failed to delete order");
+      console.error(error);
+    }
   };
 
   const getStatusColor = (
     status: string
   ): "default" | "secondary" | "destructive" | "outline" => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case "delivered":
         return "default";
       case "shipped":
@@ -214,6 +165,18 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
         return "default";
     }
   };
+
+  const getProductName = (productId: number) => {
+    return products.find(p => p.productId === productId)?.productName || "Unknown Product";
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -267,49 +230,40 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Order Number</TableHead>
-              <TableHead>Customer</TableHead>
+              <TableHead>Order ID</TableHead>
               <TableHead>Product</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Total</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Claim Date</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Date</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                   No orders found.
                 </TableCell>
               </TableRow>
             ) : (
               filteredOrders.map((order) => (
-                <TableRow key={order.id}>
+                <TableRow key={order.orderId}>
                   <TableCell>
-                    <span className="text-gray-900">{order.orderNumber}</span>
+                    <span className="text-gray-900">BAO-{String(order.orderId).padStart(4, "0")}</span>
                   </TableCell>
                   <TableCell>
-                    <div>
-                      <div className="text-gray-900">{order.customer}</div>
-                      <div className="text-sm text-gray-500">{order.email}</div>
-                    </div>
+                    <span className="text-gray-700">{getProductName(order.productId)}</span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-700">{order.product}</span>
+                    <span className="text-gray-900">₱{Number(order.amount).toFixed(2)}</span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-900">{order.quantity}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-gray-900">₱{order.total.toFixed(2)}</span>
+                    <span className="text-gray-600">
+                      {new Date(order.dateToClaim).toLocaleDateString()}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <Badge variant={getStatusColor(order.status)}>{order.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-gray-600">{order.date}</span>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -330,7 +284,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(order.id)}
+                        onClick={() => handleDelete(order.orderId)}
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
@@ -354,33 +308,28 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-gray-600">Order Number</Label>
-                  <p className="text-gray-900">{viewingOrder.orderNumber}</p>
+                  <Label className="text-gray-600">Order ID</Label>
+                  <p className="text-gray-900">BAO-{String(viewingOrder.orderId).padStart(4, "0")}</p>
                 </div>
                 <div>
-                  <Label className="text-gray-600">Date</Label>
-                  <p className="text-gray-900">{viewingOrder.date}</p>
+                  <Label className="text-gray-600">Claim Date</Label>
+                  <p className="text-gray-900">{new Date(viewingOrder.dateToClaim).toLocaleDateString()}</p>
                 </div>
-              </div>
-              <div>
-                <Label className="text-gray-600">Customer</Label>
-                <p className="text-gray-900">{viewingOrder.customer}</p>
-                <p className="text-sm text-gray-500">{viewingOrder.email}</p>
               </div>
               <div>
                 <Label className="text-gray-600">Product</Label>
-                <p className="text-gray-900">{viewingOrder.product}</p>
+                <p className="text-gray-900">{getProductName(viewingOrder.productId)}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-600">Quantity</Label>
-                  <p className="text-gray-900">{viewingOrder.quantity} units</p>
-                </div>
-                <div>
-                  <Label className="text-gray-600">Total</Label>
-                  <p className="text-gray-900">₱{viewingOrder.total.toFixed(2)}</p>
-                </div>
+              <div>
+                <Label className="text-gray-600">Amount</Label>
+                <p className="text-gray-900">₱{Number(viewingOrder.amount).toFixed(2)}</p>
               </div>
+              {viewingOrder.dateClaimed && (
+                <div>
+                  <Label className="text-gray-600">Claimed Date</Label>
+                  <p className="text-gray-900">{new Date(viewingOrder.dateClaimed).toLocaleDateString()}</p>
+                </div>
+              )}
               <div>
                 <Label className="text-gray-600">Status</Label>
                 <div className="mt-1">
@@ -411,107 +360,65 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="customer">Student Name</Label>
-                <Input
-                  id="customer"
-                  placeholder="Juan Dela Cruz"
-                  value={formData.customer}
-                  onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="order-email">Student Email</Label>
-                <Input
-                  id="order-email"
-                  type="email"
-                  placeholder="student@rtu.edu.ph"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="order-product">Item</Label>
+                <Label htmlFor="order-product">Product</Label>
                 <select
                   id="order-product"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={formData.product}
-                  onChange={(e) => setFormData({ ...formData, product: e.target.value })}
+                  value={formData.productId}
+                  onChange={(e) => setFormData({ ...formData, productId: parseInt(e.target.value) })}
                   required
                 >
-                  <option value="">Select an item</option>
-                  <option value="RTU Student ID Card">RTU Student ID Card - ₱150.00</option>
-                  <option value="University Uniform (Male)">University Uniform (Male) - ₱850.00</option>
-                  <option value="University Uniform (Female)">University Uniform (Female) - ₱850.00</option>
-                  <option value="PE Uniform Set">PE Uniform Set - ₱450.00</option>
-                  <option value="Certificate of Enrollment">Certificate of Enrollment - ₱50.00</option>
-                  <option value="Transcript of Records">Transcript of Records - ₱100.00</option>
-                  <option value="School Supplies Kit">School Supplies Kit - ₱350.00</option>
-                  <option value="RTU Lanyard">RTU Lanyard - ₱75.00</option>
+                  <option value={0}>Select a product</option>
+                  {products.map((product) => (
+                    <option key={product.productId} value={product.productId}>
+                      {product.productName} - ₱{Number(product.price).toFixed(2)}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="quantity">Quantity</Label>
+                  <Label htmlFor="claim-date">Claim Date</Label>
                   <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    value={formData.quantity || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })
-                    }
+                    id="claim-date"
+                    type="date"
+                    value={formData.dateToClaim}
+                    onChange={(e) => setFormData({ ...formData, dateToClaim: e.target.value })}
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="total">Total (₱)</Label>
+                  <Label htmlFor="amount">Amount (₱)</Label>
                   <Input
-                    id="total"
+                    id="amount"
                     type="number"
                     step="0.01"
                     placeholder="0.00"
-                    value={formData.total || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, total: parseFloat(e.target.value) || 0 })
-                    }
+                    value={formData.amount || ""}
+                    onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
                     required
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="order-status">Status</Label>
-                  <select
-                    id="order-status"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.status}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        status: e.target.value as Order["status"],
-                      })
-                    }
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="processing">Processing</option>
-                    <option value="shipped">Shipped</option>
-                    <option value="delivered">Delivered</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="order-date">Date</Label>
-                  <Input
-                    id="order-date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    required
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="order-status">Status</Label>
+                <select
+                  id="order-status"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  value={formData.status}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      status: e.target.value,
+                    })
+                  }
+                >
+                  <option value="pending">Pending</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
               </div>
             </div>
             <DialogFooter>

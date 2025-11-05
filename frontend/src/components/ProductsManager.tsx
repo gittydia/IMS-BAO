@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -22,143 +21,73 @@ import {
 import { Badge } from "./ui/badge";
 import { Plus, Search, Edit, Trash2, Package } from "lucide-react";
 import { toast } from "sonner";
-
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  stock: number;
-  category: string;
-  status: "in stock" | "low stock" | "out of stock";
-}
-
-const initialProducts: Product[] = [
-  {
-    id: "1",
-    name: "RTU Student ID Card",
-    description: "Official RTU identification card with chip",
-    price: 150.00,
-    stock: 245,
-    category: "ID & Cards",
-    status: "in stock",
-  },
-  {
-    id: "2",
-    name: "University Uniform (Male)",
-    description: "Standard male uniform - polo shirt and pants",
-    price: 850.00,
-    stock: 8,
-    category: "Uniforms",
-    status: "low stock",
-  },
-  {
-    id: "3",
-    name: "University Uniform (Female)",
-    description: "Standard female uniform - blouse and skirt",
-    price: 850.00,
-    stock: 15,
-    category: "Uniforms",
-    status: "in stock",
-  },
-  {
-    id: "4",
-    name: "PE Uniform Set",
-    description: "Complete PE uniform with RTU logo",
-    price: 450.00,
-    stock: 0,
-    category: "Uniforms",
-    status: "out of stock",
-  },
-  {
-    id: "5",
-    name: "Certificate of Enrollment",
-    description: "Official enrollment certificate (per copy)",
-    price: 50.00,
-    stock: 500,
-    category: "Documents",
-    status: "in stock",
-  },
-  {
-    id: "6",
-    name: "Transcript of Records",
-    description: "Official transcript (per copy)",
-    price: 100.00,
-    stock: 300,
-    category: "Documents",
-    status: "in stock",
-  },
-  {
-    id: "7",
-    name: "School Supplies Kit",
-    description: "Basic school supplies bundle",
-    price: 350.00,
-    stock: 45,
-    category: "Supplies",
-    status: "in stock",
-  },
-  {
-    id: "8",
-    name: "RTU Lanyard",
-    description: "Official RTU lanyard for ID card",
-    price: 75.00,
-    stock: 7,
-    category: "ID & Cards",
-    status: "low stock",
-  },
-];
+import * as api from "../lib/api";
 
 export function ProductsManager() {
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<api.Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [formData, setFormData] = useState<Omit<Product, "id" | "status">>({
-    name: "",
-    description: "",
+  const [editingProduct, setEditingProduct] = useState<api.Product | null>(null);
+  const [formData, setFormData] = useState({
+    productName: "",
+    productCategory: "ID & Cards",
     price: 0,
-    stock: 0,
-    category: "Electronics",
+    status: "Available",
+    quantity: 0,
   });
 
-  const getStatus = (stock: number): "in stock" | "low stock" | "out of stock" => {
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    try {
+      setIsLoading(true);
+      const data = await api.getProducts();
+      setProducts(data);
+    } catch (error) {
+      toast.error("Failed to load products");
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getStatus = (stock: number): string => {
     if (stock === 0) return "out of stock";
     if (stock <= 10) return "low stock";
     return "in stock";
   };
 
-  const categories = ["all", ...Array.from(new Set(products.map((p) => p.category)))];
+  const categories = ["all", ...Array.from(new Set(products.map((p) => p.productCategory)))];
 
   const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
-
+    const matchesSearch = product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.productCategory.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = categoryFilter === "all" || product.productCategory === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
-  const handleOpenDialog = (product?: Product) => {
+  const handleOpenDialog = (product?: api.Product) => {
     if (product) {
       setEditingProduct(product);
       setFormData({
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        stock: product.stock,
-        category: product.category,
+        productName: product.productName,
+        productCategory: product.productCategory,
+        price: typeof product.price === "string" ? parseFloat(product.price) : product.price,
+        status: product.status,
+        quantity: product.quantity,
       });
     } else {
       setEditingProduct(null);
       setFormData({
-        name: "",
-        description: "",
+        productName: "",
+        productCategory: "ID & Cards",
         price: 0,
-        stock: 0,
-        category: "Electronics",
+        status: "Available",
+        quantity: 0,
       });
     }
     setIsDialogOpen(true);
@@ -169,48 +98,54 @@ export function ProductsManager() {
     setEditingProduct(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const status = getStatus(formData.stock);
-
-    if (editingProduct) {
-      setProducts(
-        products.map((p) =>
-          p.id === editingProduct.id ? { ...formData, id: p.id, status } : p
-        )
-      );
-      toast.success("Product updated successfully!");
-    } else {
-      const newProduct: Product = {
-        ...formData,
-        id: Date.now().toString(),
-        status,
-      };
-      setProducts([...products, newProduct]);
-      toast.success("Product created successfully!");
+    try {
+      if (editingProduct) {
+        await api.updateProduct(editingProduct.productId, formData);
+        toast.success("Product updated successfully!");
+      } else {
+        await api.createProduct(formData.productName, formData.productCategory, formData.price, formData.quantity, formData.status);
+        toast.success("Product created successfully!");
+      }
+      handleCloseDialog();
+      loadProducts();
+    } catch (error) {
+      toast.error(editingProduct ? "Failed to update product" : "Failed to create product");
+      console.error(error);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDelete = (id: string) => {
-    setProducts(products.filter((p) => p.id !== id));
-    toast.success("Product deleted successfully!");
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+    try {
+      await api.deleteProduct(id);
+      toast.success("Product deleted successfully!");
+      loadProducts();
+    } catch (error) {
+      toast.error("Failed to delete product");
+      console.error(error);
+    }
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case "in stock":
-        return "default";
-      case "low stock":
-        return "secondary";
-      case "out of stock":
-        return "destructive";
-      default:
-        return "default";
+    switch (status?.toLowerCase()) {
+      case "available":
+      case "in stock": return "default";
+      case "limited stock":
+      case "low stock": return "secondary";
+      case "out of stock": return "destructive";
+      default: return "default";
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -225,7 +160,6 @@ export function ProductsManager() {
         </Button>
       </div>
 
-      {/* Search and Filter Bar */}
       <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -237,9 +171,7 @@ export function ProductsManager() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <Label htmlFor="category-filter" className="whitespace-nowrap">
-            Category:
-          </Label>
+          <Label htmlFor="category-filter" className="whitespace-nowrap">Category:</Label>
           <select
             id="category-filter"
             className="px-3 py-2 border border-gray-300 rounded-md"
@@ -247,15 +179,12 @@ export function ProductsManager() {
             onChange={(e) => setCategoryFilter(e.target.value)}
           >
             {categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </option>
+              <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Products Table */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
         <Table>
           <TableHeader>
@@ -277,44 +206,35 @@ export function ProductsManager() {
               </TableRow>
             ) : (
               filteredProducts.map((product) => (
-                <TableRow key={product.id}>
+                <TableRow key={product.productId}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                         <Package className="w-5 h-5 text-green-700" />
                       </div>
                       <div>
-                        <div className="text-gray-900">{product.name}</div>
-                        <div className="text-sm text-gray-500">{product.description}</div>
+                        <div className="text-gray-900">{product.productName}</div>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{product.category}</Badge>
+                    <Badge variant="outline">{product.productCategory}</Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-900">₱{product.price.toFixed(2)}</span>
+                    <span className="text-gray-900">₱{Number(product.price).toFixed(2)}</span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-900">{product.stock} units</span>
+                    <span className="text-gray-900">{product.quantity} units</span>
                   </TableCell>
                   <TableCell>
                     <Badge variant={getStatusColor(product.status)}>{product.status}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenDialog(product)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(product)}>
                         <Edit className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(product.id)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(product.productId)}>
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
                     </div>
@@ -326,17 +246,12 @@ export function ProductsManager() {
         </Table>
       </div>
 
-      {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {editingProduct ? "Edit Inventory Item" : "Add New Item"}
-            </DialogTitle>
+            <DialogTitle>{editingProduct ? "Edit Inventory Item" : "Add New Item"}</DialogTitle>
             <DialogDescription>
-              {editingProduct
-                ? "Update the item information below."
-                : "Add a new item to BAO inventory."}
+              {editingProduct ? "Update the item information below." : "Add a new item to BAO inventory."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
@@ -346,18 +261,8 @@ export function ProductsManager() {
                 <Input
                   id="product-name"
                   placeholder="RTU Student ID Card"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Official RTU identification card..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  value={formData.productName}
+                  onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
                   required
                 />
               </div>
@@ -370,9 +275,7 @@ export function ProductsManager() {
                     step="0.01"
                     placeholder="0.00"
                     value={formData.price || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })
-                    }
+                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
                     required
                   />
                 </div>
@@ -382,10 +285,8 @@ export function ProductsManager() {
                     id="stock"
                     type="number"
                     placeholder="0"
-                    value={formData.stock || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })
-                    }
+                    value={formData.quantity || ""}
+                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
                     required
                   />
                 </div>
@@ -395,22 +296,34 @@ export function ProductsManager() {
                 <select
                   id="category"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  value={formData.productCategory}
+                  onChange={(e) => setFormData({ ...formData, productCategory: e.target.value })}
                   required
                 >
-                  <option value="ID & Cards">ID & Cards</option>
-                  <option value="Uniforms">Uniforms</option>
-                  <option value="Documents">Documents</option>
+                  <option value="Book">Book</option>
+                  <option value="Uniform">Uniform</option>
                   <option value="Supplies">Supplies</option>
+                  <option value="Equipment">Equipment</option>
                   <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <select
+                  id="status"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  required
+                >
+                  <option value="Available">Available</option>
+                  <option value="Limited Stock">Limited Stock</option>
+                  <option value="Out of Stock">Out of Stock</option>
                 </select>
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={handleCloseDialog}>Cancel</Button>
               <Button type="submit">{editingProduct ? "Update" : "Create"}</Button>
             </DialogFooter>
           </form>
