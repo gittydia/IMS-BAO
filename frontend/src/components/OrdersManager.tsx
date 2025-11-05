@@ -11,6 +11,16 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,6 +47,8 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<api.Order | null>(null);
   const [viewingOrder, setViewingOrder] = useState<api.Order | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<api.Order | null>(null);
   const [products, setProducts] = useState<api.Product[]>([]);
   const [formData, setFormData] = useState({
     productId: 0,
@@ -119,8 +131,9 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     try {
       if (editingOrder) {
         await api.updateOrder(editingOrder.orderId, {
-          dateClaimed: formData.dateToClaim,
+          dateToClaim: formData.dateToClaim,
           status: formData.status,
+          amount: formData.amount,
         });
         toast.success("Order updated successfully!");
       } else {
@@ -135,11 +148,18 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Are you sure you want to delete this order?")) return;
+  const handleDeleteClick = (order: api.Order) => {
+    setOrderToDelete(order);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!orderToDelete) return;
     try {
-      await api.deleteOrder(id);
+      await api.deleteOrder(orderToDelete.orderId);
       toast.success("Order deleted successfully!");
+      setIsDeleteDialogOpen(false);
+      setOrderToDelete(null);
       loadOrders();
     } catch (error) {
       toast.error("Failed to delete order");
@@ -284,7 +304,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(order.orderId)}
+                        onClick={() => handleDeleteClick(order)}
                       >
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
@@ -430,6 +450,24 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-gray-900">order #{orderToDelete?.orderId}</span>? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
