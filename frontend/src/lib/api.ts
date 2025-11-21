@@ -74,6 +74,11 @@ export interface Student {
   program: string;
   userId?: number;
   createdAt?: string;
+  authUser?: {
+    id: number;
+    email: string;
+    role: string;
+  };
 }
 
 export interface Product {
@@ -83,6 +88,7 @@ export interface Product {
   price: number | string;
   status: string;
   quantity: number;
+  imageUrl?: string | null;
   createdAt?: string;
 }
 
@@ -95,6 +101,15 @@ export interface Order {
   amount: number | string;
   createdAt?: string;
   product?: Product;
+  transactions?: Transaction[];
+}
+
+export interface Transaction {
+  transactionId: number;
+  orderId: number;
+  studentId: number;
+  createdAt?: string;
+  student?: Student;
 }
 
 export interface Appointment {
@@ -106,6 +121,17 @@ export interface Appointment {
   purpose: string;
   status: string;
   createdAt?: string;
+}
+
+export interface ActivityLog {
+  activityId: number;
+  userId: number;
+  userEmail: string;
+  action: string;
+  entityType: string;
+  entityId?: number;
+  description: string;
+  createdAt: string;
 }
 
 // ============================================
@@ -286,7 +312,8 @@ export async function createProduct(
   productCategory: string,
   price: number,
   quantity: number,
-  status: string = "Available"
+  status: string = "Available",
+  imageUrl?: string
 ): Promise<Product> {
   const response = await fetch(`${API_BASE_URL}/products`, {
     method: "POST",
@@ -298,6 +325,7 @@ export async function createProduct(
       price,
       quantity,
       status,
+      imageUrl,
     }),
   });
 
@@ -399,6 +427,22 @@ export async function deleteOrder(orderId: number): Promise<{ message: string }>
 
 // ============================================
 // APPOINTMENTS API (PLACEHOLDER - NOT YET IN BACKEND)
+// ============================================
+
+// ============================================
+// ACTIVITY LOGS API
+// ============================================
+
+export async function getActivityLogs(limit: number = 10): Promise<ActivityLog[]> {
+  const response = await fetch(`${API_BASE_URL}/activity-logs?limit=${limit}`, {
+    method: "GET",
+    headers: getHeaders(),
+  });
+  return handleResponse<ActivityLog[]>(response);
+}
+
+// ============================================
+// PLACEHOLDER - Appointment functions (not yet implemented)
 // ============================================
 
 export async function getAppointments(): Promise<Appointment[]> {

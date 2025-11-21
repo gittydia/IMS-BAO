@@ -56,7 +56,12 @@
   :root, :host {
     --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --color-red-50: oklch(.984 .023 27.325);
+    --color-red-100: oklch(.963 .054 27.325);
+    --color-red-200: oklch(.925 .108 27.325);
+    --color-red-500: oklch(.697 .221 27.325);
     --color-red-600: oklch(.577 .245 27.325);
+    --color-red-700: oklch(.505 .213 27.325);
     --color-orange-500: oklch(.705 .213 47.604);
     --color-green-50: oklch(.982 .018 155.826);
     --color-green-100: oklch(.962 .044 156.743);

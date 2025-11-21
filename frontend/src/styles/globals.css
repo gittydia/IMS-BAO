@@ -79,6 +79,12 @@
 }
 
 @theme inline {
+  --color-red-50: oklch(0.984 0.023 27.325);
+  --color-red-100: oklch(0.963 0.054 27.325);
+  --color-red-200: oklch(0.925 0.108 27.325);
+  --color-red-500: oklch(0.697 0.221 27.325);
+  --color-red-600: oklch(0.577 0.245 27.325);
+  --color-red-700: oklch(0.505 0.213 27.325);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

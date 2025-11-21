@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { Users, Package, ShoppingCart, LogOut, LayoutDashboard, Calendar } from "lucide-react";
+import { Users, Package, ShoppingCart, LogOut, LayoutDashboard } from "lucide-react";
 import { UsersManager } from "./UsersManager";
 import { ProductsManager } from "./ProductsManager";
 import { OrdersManager } from "./OrdersManager";
-import { AppointmentsManager } from "./AppointmentsManager";
 import { DashboardHome } from "./DashboardHome";
 
 interface DashboardProps {
@@ -12,7 +11,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type ActiveView = "home" | "users" | "inventory" | "orders" | "appointments";
+type ActiveView = "home" | "users" | "inventory" | "orders";
 
 export function Dashboard({ currentUser, onLogout }: DashboardProps) {
   const [activeView, setActiveView] = useState<ActiveView>("home");
@@ -22,7 +21,6 @@ export function Dashboard({ currentUser, onLogout }: DashboardProps) {
     { id: "home" as ActiveView, label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff", "student"] },
     { id: "inventory" as ActiveView, label: "Inventory", icon: Package, roles: ["admin", "staff"] },
     { id: "orders" as ActiveView, label: "Orders", icon: ShoppingCart, roles: ["admin", "staff", "student"] },
-    { id: "appointments" as ActiveView, label: "Appointments", icon: Calendar, roles: ["admin", "staff", "student"] },
     { id: "users" as ActiveView, label: "Users", icon: Users, roles: ["admin"] },
   ];
 
@@ -85,11 +83,10 @@ export function Dashboard({ currentUser, onLogout }: DashboardProps) {
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <div className="p-8">
-          {activeView === "home" && <DashboardHome userRole={currentUser?.role || "student"} />}
+          {activeView === "home" && <DashboardHome userRole={currentUser?.role || "student"} onNavigate={setActiveView} />}
           {activeView === "users" && <UsersManager />}
           {activeView === "inventory" && <ProductsManager />}
           {activeView === "orders" && <OrdersManager userRole={currentUser?.role || "student"} userName={currentUser?.name || ""} />}
-          {activeView === "appointments" && <AppointmentsManager userRole={currentUser?.role || "student"} userName={currentUser?.name || ""} />}
         </div>
       </main>
     </div>

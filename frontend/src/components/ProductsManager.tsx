@@ -32,12 +32,14 @@ import { Badge } from "./ui/badge";
 import { Plus, Search, Edit, Trash2, Package } from "lucide-react";
 import { toast } from "sonner";
 import * as api from "../lib/api";
+import { ImageWithFallback } from "./fallback/ImageWithFallback";
 
 export function ProductsManager() {
   const [products, setProducts] = useState<api.Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<api.Product | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -46,9 +48,11 @@ export function ProductsManager() {
     productName: "",
     productCategory: "ID & Cards",
     price: 0,
-    status: "Available",
     quantity: 0,
+    imageUrl: "",
   });
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
 
   useEffect(() => {
     loadProducts();
@@ -74,12 +78,15 @@ export function ProductsManager() {
   };
 
   const categories = ["all", ...Array.from(new Set(products.map((p) => p.productCategory)))];
+  const statuses = ["all", "in stock", "low stock", "out of stock"];
 
   const filteredProducts = products.filter((product) => {
     const matchesSearch = product.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.productCategory.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === "all" || product.productCategory === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const productStatus = getStatus(product.quantity);
+    const matchesStatus = statusFilter === "all" || productStatus === statusFilter;
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const handleOpenDialog = (product?: api.Product) => {
@@ -89,18 +96,22 @@ export function ProductsManager() {
         productName: product.productName,
         productCategory: product.productCategory,
         price: typeof product.price === "string" ? parseFloat(product.price) : product.price,
-        status: product.status,
         quantity: product.quantity,
+        imageUrl: product.imageUrl || "",
       });
+      setImagePreview(product.imageUrl || "");
+      setSelectedImage(null);
     } else {
       setEditingProduct(null);
       setFormData({
         productName: "",
         productCategory: "ID & Cards",
         price: 0,
-        status: "Available",
         quantity: 0,
+        imageUrl: "",
       });
+      setImagePreview("");
+      setSelectedImage(null);
     }
     setIsDialogOpen(true);
   };
@@ -108,16 +119,91 @@ export function ProductsManager() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingProduct(null);
+    setSelectedImage(null);
+    setImagePreview("");
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Invalid file type. Please upload an image (JPEG, PNG, WebP, or GIF).');
+        return;
+      }
+      
+      // Validate file size (5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('File size exceeds 5MB limit.');
+        return;
+      }
+      
+      setSelectedImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!selectedImage) return null;
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedImage);
+      
+      const sessionId = localStorage.getItem('session_id'); // Fixed: use 'session_id' not 'sessionId'
+      const response = await fetch('http://localhost:8000/upload-image', {
+        method: 'POST',
+        headers: {
+          'X-Session-Id': sessionId || '',
+        },
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+      
+      const data = await response.json();
+      return data.url;
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload image');
+      return null;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let imageUrl = formData.imageUrl;
+      
+      // Upload image if a new one was selected
+      if (selectedImage) {
+        const uploadedUrl = await uploadImage();
+        if (uploadedUrl) {
+          imageUrl = uploadedUrl;
+        } else {
+          // If upload failed, stop the submission
+          return;
+        }
+      }
+
+      // Auto-calculate status based on quantity
+      const status = getStatus(formData.quantity);
+      
       if (editingProduct) {
-        await api.updateProduct(editingProduct.productId, formData);
+        await api.updateProduct(editingProduct.productId, { ...formData, status, imageUrl });
         toast.success("Product updated successfully!");
       } else {
-        await api.createProduct(formData.productName, formData.productCategory, formData.price, formData.quantity, formData.status);
+        await api.createProduct(formData.productName, formData.productCategory, formData.price, formData.quantity, status, imageUrl);
         toast.success("Product created successfully!");
       }
       handleCloseDialog();
@@ -202,6 +288,21 @@ export function ProductsManager() {
             ))}
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="status-filter" className="whitespace-nowrap">Status:</Label>
+          <select
+            id="status-filter"
+            className="px-3 py-2 border border-gray-300 rounded-md"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            {statuses.map((status) => (
+              <option key={status} value={status}>
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
@@ -228,8 +329,16 @@ export function ProductsManager() {
                 <TableRow key={product.productId}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                        <Package className="w-5 h-5 text-green-700" />
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center overflow-hidden">
+                        {product.imageUrl ? (
+                          <ImageWithFallback 
+                            src={`http://localhost:8000${product.imageUrl}`}
+                            alt={product.productName}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Package className="w-5 h-5 text-green-700" />
+                        )}
                       </div>
                       <div>
                         <div className="text-gray-900">{product.productName}</div>
@@ -266,7 +375,7 @@ export function ProductsManager() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingProduct ? "Edit Inventory Item" : "Add New Item"}</DialogTitle>
             <DialogDescription>
@@ -327,18 +436,32 @@ export function ProductsManager() {
                 </select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <select
-                  id="status"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  required
-                >
-                  <option value="Available">Available</option>
-                  <option value="Limited Stock">Limited Stock</option>
-                  <option value="Out of Stock">Out of Stock</option>
-                </select>
+                <Label htmlFor="productImage">Product Image (Optional)</Label>
+                <Input
+                  id="productImage"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                  onChange={handleImageChange}
+                  className="cursor-pointer"
+                />
+                
+                {/* Image Preview - Inline and small */}
+                {imagePreview && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="w-16 h-16 border border-gray-300 rounded overflow-hidden bg-white flex-shrink-0">
+                      <img 
+                        src={imagePreview} 
+                        alt="Preview" 
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">Image selected</p>
+                  </div>
+                )}
+                
+                {!imagePreview && (
+                  <p className="text-xs text-gray-500">Max 5MB. JPEG, PNG, WebP, GIF</p>
+                )}
               </div>
             </div>
             <DialogFooter>
