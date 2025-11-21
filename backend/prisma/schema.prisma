@@ -70,6 +70,7 @@ model Product {
   price           Decimal     @db.Decimal(10, 2)
   status          String      @map("statusorder") @db.VarChar(50)
   quantity        Int
+  imageUrl        String?     @map("image_url") @db.VarChar(500)
   createdAt       DateTime    @default(now()) @map("created_at")
   books           Book[]
   orders          Order[]
@@ -137,4 +138,17 @@ model Transaction {
   student       Student  @relation(fields: [studentId], references: [studentId], onDelete: Cascade)
 
   @@map("transactions")
+}
+
+model ActivityLog {
+  activityId  Int      @id @default(autoincrement()) @map("activity_id")
+  userId      Int      @map("user_id")
+  userEmail   String   @map("user_email") @db.VarChar(255)
+  action      String   @db.VarChar(50)
+  entityType  String   @map("entity_type") @db.VarChar(50)
+  entityId    Int?     @map("entity_id")
+  description String   @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("activity_logs")
 }
