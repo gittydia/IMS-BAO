@@ -5,6 +5,7 @@ import { UsersManager } from "./UsersManager";
 import { ProductsManager } from "./ProductsManager";
 import { OrdersManager } from "./OrdersManager";
 import { DashboardHome } from "./DashboardHome";
+import { StudentShop } from "./StudentShop";
 
 interface DashboardProps {
   currentUser: { email: string; name: string; role: string } | null;
@@ -18,7 +19,7 @@ export function Dashboard({ currentUser, onLogout }: DashboardProps) {
 
   // Filter menu items based on user role
   const allMenuItems = [
-    { id: "home" as ActiveView, label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff", "student"] },
+    { id: "home" as ActiveView, label: currentUser?.role === "student" ? "Shop" : "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff", "student"] },
     { id: "inventory" as ActiveView, label: "Inventory", icon: Package, roles: ["admin", "staff"] },
     { id: "orders" as ActiveView, label: "Orders", icon: ShoppingCart, roles: ["admin", "staff", "student"] },
     { id: "users" as ActiveView, label: "Users", icon: Users, roles: ["admin"] },
@@ -83,7 +84,8 @@ export function Dashboard({ currentUser, onLogout }: DashboardProps) {
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <div className="p-8">
-          {activeView === "home" && <DashboardHome userRole={currentUser?.role || "student"} onNavigate={setActiveView} />}
+          {activeView === "home" && currentUser?.role === "student" && <StudentShop />}
+          {activeView === "home" && currentUser?.role !== "student" && <DashboardHome userRole={currentUser?.role || "staff"} onNavigate={setActiveView} />}
           {activeView === "users" && <UsersManager />}
           {activeView === "inventory" && <ProductsManager />}
           {activeView === "orders" && <OrdersManager userRole={currentUser?.role || "student"} userName={currentUser?.name || ""} />}

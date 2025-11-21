@@ -44,12 +44,20 @@ export function ProductsManager() {
   const [editingProduct, setEditingProduct] = useState<api.Product | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<api.Product | null>(null);
+  const [selectedProductForUniform, setSelectedProductForUniform] = useState<api.Product | null>(null);
+  const [isUniformDialogOpen, setIsUniformDialogOpen] = useState(false);
+  const [uniforms, setUniforms] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     productName: "",
     productCategory: "ID & Cards",
     price: 0,
     quantity: 0,
     imageUrl: "",
+  });
+  const [uniformFormData, setUniformFormData] = useState({
+    sizeType: "M",
+    gender: "Unisex",
+    type: "Standard Uniform",
   });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -68,6 +76,89 @@ export function ProductsManager() {
       console.error(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadUniforms = async (productId: number) => {
+    try {
+      const response = await fetch(`http://localhost:8000/uniforms/${productId}`, {
+        headers: {
+          'X-Session-Id': localStorage.getItem('session_id') || '',
+        },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUniforms(data);
+      }
+    } catch (error) {
+      console.error("Failed to load uniforms:", error);
+    }
+  };
+
+  const handleOpenUniformDialog = (product: api.Product) => {
+    setSelectedProductForUniform(product);
+    loadUniforms(product.productId);
+    setUniformFormData({
+      sizeType: "M",
+      gender: "Unisex",
+      type: "Standard Uniform",
+    });
+    setIsUniformDialogOpen(true);
+  };
+
+  const handleSubmitUniform = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProductForUniform) return;
+
+    try {
+      const response = await fetch('http://localhost:8000/uniforms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': localStorage.getItem('session_id') || '',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          productId: selectedProductForUniform.productId,
+          ...uniformFormData,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to create uniform');
+      
+      toast.success("Uniform variant created successfully!");
+      setUniformFormData({
+        sizeType: "M",
+        gender: "Unisex",
+        type: "Standard Uniform",
+      });
+      loadUniforms(selectedProductForUniform.productId);
+    } catch (error) {
+      toast.error("Failed to create uniform variant");
+      console.error(error);
+    }
+  };
+
+  const handleDeleteUniform = async (uniformId: number) => {
+    try {
+      const response = await fetch(`http://localhost:8000/uniforms/${uniformId}`, {
+        method: 'DELETE',
+        headers: {
+          'X-Session-Id': localStorage.getItem('session_id') || '',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) throw new Error('Failed to delete uniform');
+      
+      toast.success("Uniform variant deleted successfully!");
+      if (selectedProductForUniform) {
+        loadUniforms(selectedProductForUniform.productId);
+      }
+    } catch (error) {
+      toast.error("Failed to delete uniform variant");
+      console.error(error);
     }
   };
 
@@ -112,6 +203,12 @@ export function ProductsManager() {
       });
       setImagePreview("");
       setSelectedImage(null);
+      // Reset uniform form data for new product
+      setUniformFormData({
+        sizeType: "M",
+        gender: "Unisex",
+        type: "Standard Uniform",
+      });
     }
     setIsDialogOpen(true);
   };
@@ -199,13 +296,54 @@ export function ProductsManager() {
       // Auto-calculate status based on quantity
       const status = getStatus(formData.quantity);
       
+      // Generate product name for uniforms
+      let productName = formData.productName;
+      if (formData.productCategory === "Uniform") {
+        if (uniformFormData.type === "Standard Uniform") {
+          productName = `${uniformFormData.gender} ${uniformFormData.type} ${uniformFormData.sizeType}`;
+        } else {
+          productName = `${uniformFormData.type} ${uniformFormData.sizeType}`;
+        }
+      }
+      
+      let newProduct = null;
+      
       if (editingProduct) {
-        await api.updateProduct(editingProduct.productId, { ...formData, status, imageUrl });
+        await api.updateProduct(editingProduct.productId, { ...formData, status, imageUrl, productName }, productName);
         toast.success("Product updated successfully!");
       } else {
-        await api.createProduct(formData.productName, formData.productCategory, formData.price, formData.quantity, status, imageUrl);
+        const createdProduct = await api.createProduct(productName, formData.productCategory, formData.price, formData.quantity, status, imageUrl);
+        newProduct = createdProduct;
         toast.success("Product created successfully!");
+        
+        // If it's a Uniform, also create a uniform variant
+        if (formData.productCategory === "Uniform" && createdProduct) {
+          try {
+            const response = await fetch('http://localhost:8000/uniforms', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Id': localStorage.getItem('session_id') || '',
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                productId: createdProduct.productId,
+                sizeType: uniformFormData.sizeType,
+                gender: uniformFormData.type === "PE" ? "Unisex" : uniformFormData.gender,
+                type: uniformFormData.type,
+              }),
+            });
+
+            if (response.ok) {
+              toast.success("Uniform variant created!");
+            }
+          } catch (error) {
+            console.error("Failed to create uniform variant:", error);
+            // Don't fail the product creation if uniform variant fails
+          }
+        }
       }
+      
       handleCloseDialog();
       loadProducts();
     } catch (error) {
@@ -362,6 +500,11 @@ export function ProductsManager() {
                       <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(product)}>
                         <Edit className="w-4 h-4" />
                       </Button>
+                      {product.productCategory === "Uniform" && (
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenUniformDialog(product)}>
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(product)}>
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </Button>
@@ -384,16 +527,18 @@ export function ProductsManager() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="product-name">Item Name</Label>
-                <Input
-                  id="product-name"
-                  placeholder="RTU Student ID Card"
-                  value={formData.productName}
-                  onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
-                  required
-                />
-              </div>
+              {formData.productCategory !== "Uniform" && (
+                <div className="space-y-2">
+                  <Label htmlFor="product-name">Item Name</Label>
+                  <Input
+                    id="product-name"
+                    placeholder="RTU Student ID Card"
+                    value={formData.productName}
+                    onChange={(e) => setFormData({ ...formData, productName: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="price">Price (₱)</Label>
@@ -435,6 +580,58 @@ export function ProductsManager() {
                   <option value="Other">Other</option>
                 </select>
               </div>
+
+              {/* Uniform-specific fields */}
+              {formData.productCategory === "Uniform" && (
+                <div className="space-y-4 p-4 rounded-lg border border-gray-200">
+                  <h3 className="font-semibold text-gray-900">Uniform Options</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="uniform-type">Type</Label>
+                      <select
+                        id="uniform-type"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                        value={uniformFormData.type}
+                        onChange={(e) => setUniformFormData({ ...uniformFormData, type: e.target.value })}
+                      >
+                        <option value="Standard Uniform">Standard Uniform</option>
+                        <option value="PE">PE</option>
+                      </select>
+                    </div>
+                    {uniformFormData.type === "Standard Uniform" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="uniform-gender">Gender</Label>
+                        <select
+                          id="uniform-gender"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          value={uniformFormData.gender}
+                          onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="uniform-size">Size</Label>
+                      <select
+                        id="uniform-size"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                        value={uniformFormData.sizeType}
+                        onChange={(e) => setUniformFormData({ ...uniformFormData, sizeType: e.target.value })}
+                      >
+                        <option value="XS">XS</option>
+                        <option value="S">S</option>
+                        <option value="M">M</option>
+                        <option value="L">L</option>
+                        <option value="XL">XL</option>
+                        <option value="XXL">XXL</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="productImage">Product Image (Optional)</Label>
                 <Input
@@ -489,6 +686,107 @@ export function ProductsManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Uniform Variants Dialog */}
+      <Dialog open={isUniformDialogOpen} onOpenChange={setIsUniformDialogOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Uniform Variants - {selectedProductForUniform?.productName}</DialogTitle>
+            <DialogDescription>
+              Create and manage uniform variants with different sizes and styles.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Add New Variant Form */}
+            <div className="border-b pb-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Add New Variant</h3>
+              <form onSubmit={handleSubmitUniform} className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="size">Size</Label>
+                    <select
+                      id="size"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={uniformFormData.sizeType}
+                      onChange={(e) => setUniformFormData({ ...uniformFormData, sizeType: e.target.value })}
+                    >
+                      <option value="XS">XS</option>
+                      <option value="S">S</option>
+                      <option value="M">M</option>
+                      <option value="L">L</option>
+                      <option value="XL">XL</option>
+                      <option value="XXL">XXL</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gender">Gender</Label>
+                    <select
+                      id="gender"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={uniformFormData.gender}
+                      onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Unisex">Unisex</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Type</Label>
+                    <select
+                      id="type"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      value={uniformFormData.type}
+                      onChange={(e) => setUniformFormData({ ...uniformFormData, type: e.target.value })}
+                    >
+                      <option value="Standard Uniform">Standard Uniform</option>
+                      <option value="PE">PE</option>
+                    </select>
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Variant
+                </Button>
+              </form>
+            </div>
+
+            {/* Existing Variants List */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-4">Existing Variants ({uniforms.length})</h3>
+              {uniforms.length === 0 ? (
+                <p className="text-gray-500 text-sm">No variants yet. Create one above.</p>
+              ) : (
+                <div className="space-y-2">
+                  {uniforms.map((uniform) => (
+                    <div key={uniform.uniformId} className="flex items-center justify-between p-3 border border-gray-200 rounded-md">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {uniform.type} • {uniform.gender} • Size {uniform.sizeType}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteUniform(uniform.uniformId)}
+                      >
+                        <Trash2 className="w-4 h-4 text-red-600" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsUniformDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
