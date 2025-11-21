@@ -87,6 +87,16 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
   };
 
   const filteredOrders = orders.filter((order) => {
+    // If student, only show their own orders
+    if (userRole === "student") {
+      const isStudentOrder = order.transactions && order.transactions.length > 0 && 
+        order.transactions.some(t => t.student && 
+          t.student.firstname && 
+          `${t.student.firstname} ${t.student.lastname}`.toLowerCase().includes(userName.toLowerCase())
+        );
+      if (!isStudentOrder) return false;
+    }
+
     const matchesSearch =
       String(order.orderId).toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -217,17 +227,21 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     <div>
       <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-gray-900 mb-2">Orders Management</h1>
+          <h1 className="text-gray-900 mb-2">
+            {userRole === "student" ? "My Orders" : "Orders Management"}
+          </h1>
           <p className="text-gray-600">
             {userRole === "student" 
-              ? "View and track your BAO orders for uniforms, IDs, and documents."
-              : "Track and process student orders for BAO items."}
+              ? "View and track your orders for uniforms, IDs, and documents."
+              : "Track and process all student orders for BAO items."}
           </p>
         </div>
-        <Button onClick={() => handleOpenDialog()} className="gap-2">
-          <Plus className="w-4 h-4" />
-          {userRole === "student" ? "Place Order" : "Add Order"}
-        </Button>
+        {userRole !== "student" && (
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Add Order
+          </Button>
+        )}
       </div>
 
       {/* Search and Filter Bar */}
@@ -266,7 +280,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Order ID</TableHead>
-              <TableHead>Student</TableHead>
+              {userRole !== "student" && <TableHead>Student</TableHead>}
               <TableHead>Product</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Claim Date</TableHead>
@@ -277,27 +291,29 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           <TableBody>
             {filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                  No orders found.
+                <TableCell colSpan={userRole === "student" ? 6 : 7} className="text-center py-8 text-gray-500">
+                  {userRole === "student" ? "No orders yet. Start shopping!" : "No orders found."}
                 </TableCell>
               </TableRow>
             ) : (
               filteredOrders.map((order) => (
                 <TableRow key={order.orderId}>
                   <TableCell>
-                    <span className="text-gray-900">BAO-{String(order.orderId).padStart(4, "0")}</span>
+                    <span className="text-gray-900 font-medium">BAO-{String(order.orderId).padStart(4, "0")}</span>
                   </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-gray-900 font-medium">{getStudentInfo(order)}</p>
-                      <p className="text-xs text-gray-500">{getStudentEmail(order)}</p>
-                    </div>
-                  </TableCell>
+                  {userRole !== "student" && (
+                    <TableCell>
+                      <div>
+                        <p className="text-gray-900 font-medium">{getStudentInfo(order)}</p>
+                        <p className="text-xs text-gray-500">{getStudentEmail(order)}</p>
+                      </div>
+                    </TableCell>
+                  )}
                   <TableCell>
                     <span className="text-gray-700">{getProductName(order.productId)}</span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-gray-900">₱{Number(order.amount).toFixed(2)}</span>
+                    <span className="text-gray-900 font-medium">₱{Number(order.amount).toFixed(2)}</span>
                   </TableCell>
                   <TableCell>
                     <span className="text-gray-600">
@@ -316,20 +332,24 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenDialog(order)}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteClick(order)}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
+                      {userRole !== "student" && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenDialog(order)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(order)}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -351,30 +371,32 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-gray-600">Order ID</Label>
-                  <p className="text-gray-900">BAO-{String(viewingOrder.orderId).padStart(4, "0")}</p>
+                  <p className="text-gray-900 font-medium">BAO-{String(viewingOrder.orderId).padStart(4, "0")}</p>
                 </div>
                 <div>
                   <Label className="text-gray-600">Claim Date</Label>
                   <p className="text-gray-900">{new Date(viewingOrder.dateToClaim).toLocaleDateString()}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-gray-600">Student Name</Label>
-                  <p className="text-gray-900">{getStudentInfo(viewingOrder)}</p>
+              {userRole !== "student" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-gray-600">Student Name</Label>
+                    <p className="text-gray-900">{getStudentInfo(viewingOrder)}</p>
+                  </div>
+                  <div>
+                    <Label className="text-gray-600">Student Email</Label>
+                    <p className="text-gray-900">{getStudentEmail(viewingOrder)}</p>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-gray-600">Student Email</Label>
-                  <p className="text-gray-900">{getStudentEmail(viewingOrder)}</p>
-                </div>
-              </div>
+              )}
               <div>
                 <Label className="text-gray-600">Product</Label>
                 <p className="text-gray-900">{getProductName(viewingOrder.productId)}</p>
               </div>
               <div>
                 <Label className="text-gray-600">Amount</Label>
-                <p className="text-gray-900">₱{Number(viewingOrder.amount).toFixed(2)}</p>
+                <p className="text-gray-900 font-medium">₱{Number(viewingOrder.amount).toFixed(2)}</p>
               </div>
               {viewingOrder.dateClaimed && (
                 <div>

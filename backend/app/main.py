@@ -620,7 +620,16 @@ async def get_order(order_id: int):
     return order
 
 @app.post("/orders")
-async def create_order(order: OrderCreate):
+async def create_order(order: OrderCreate, current_user: dict = Depends(get_current_user)):
+    # First, verify product exists and has stock
+    product = await db.product.find_unique(where={'productId': order.productId})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    if product.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Product out of stock")
+    
+    # Create the order
     new_order = await db.order.create(
         data={
             'productId': order.productId,
@@ -629,6 +638,31 @@ async def create_order(order: OrderCreate):
             'amount': Decimal(str(order.amount)),
         }
     )
+    
+    # Create transaction linking student to order (only if user is a student)
+    if current_user["role"] == "student" and current_user["entity_id"]:
+        try:
+            await db.transaction.create(
+                data={
+                    'orderId': new_order.orderId,
+                    'studentId': current_user["entity_id"]
+                }
+            )
+        except Exception as e:
+            print(f"Failed to create transaction: {e}")
+    
+    # Decrement product quantity
+    new_quantity = product.quantity - 1
+    new_product_status = calculate_product_status(new_quantity)
+    
+    await db.product.update(
+        where={'productId': order.productId},
+        data={
+            'quantity': new_quantity,
+            'status': new_product_status
+        }
+    )
+    
     return new_order
 
 @app.put("/orders/{order_id}")
@@ -650,32 +684,21 @@ async def update_order(order_id: int, order: OrderUpdate):
     if order.status:
         update_data['status'] = order.status
     
-    # Handle stock adjustments when status changes to/from "claimed"
+    # Handle stock adjustments when status changes
     if old_status != new_status and existing.product:
-        # Status changed FROM claimed TO something else - ADD stock back
-        if old_status == "claimed" and new_status != "claimed":
+        # Status changed TO cancelled - ADD stock back (refund the reservation)
+        if new_status == "cancelled" and old_status != "cancelled":
             await db.product.update(
                 where={'productId': existing.productId},
                 data={'quantity': {'increment': 1}}
             )
-        
-        # Status changed TO claimed FROM something else - SUBTRACT stock
-        elif old_status != "claimed" and new_status == "claimed":
-            # Check if product has stock available
-            if existing.product.quantity > 0:
-                await db.product.update(
-                    where={'productId': existing.productId},
-                    data={'quantity': {'decrement': 1}}
-                )
-                # Auto-update product status based on new quantity
-                new_quantity = existing.product.quantity - 1
-                new_product_status = calculate_product_status(new_quantity)
-                await db.product.update(
-                    where={'productId': existing.productId},
-                    data={'status': new_product_status}
-                )
-            else:
-                raise HTTPException(status_code=400, detail="Product out of stock")
+            # Auto-update product status
+            new_quantity = existing.product.quantity + 1
+            new_product_status = calculate_product_status(new_quantity)
+            await db.product.update(
+                where={'productId': existing.productId},
+                data={'status': new_product_status}
+            )
     
     updated_order = await db.order.update(
         where={'orderId': order_id},
