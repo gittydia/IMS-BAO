@@ -143,6 +143,17 @@ class OrderUpdate(BaseModel):
     dateClaimed: Optional[str] = None
     status: Optional[str] = None
 
+class UniformCreate(BaseModel):
+    productId: int
+    sizeType: str  # XS, S, M, L, XL, XXL, etc.
+    gender: str    # Male, Female, Unisex
+    type: str      # Standard Uniform, PE
+
+class UniformUpdate(BaseModel):
+    sizeType: Optional[str] = None
+    gender: Optional[str] = None
+    type: Optional[str] = None
+
 # ===== ACTIVITY LOGS =====
 @app.get("/activity-logs")
 async def get_activity_logs(limit: int = 10):
@@ -460,6 +471,113 @@ async def delete_product(product_id: int, current_user: dict = Depends(get_curre
     )
     
     return {"message": "Product deleted successfully"}
+
+# ===== UNIFORMS CRUD =====
+@app.get("/uniforms")
+async def get_uniforms(current_user: dict = Depends(get_current_user)):
+    """Get all uniforms with product details"""
+    uniforms = await db.uniform.find_many(
+        include={'product': True},
+        order={'createdAt': 'desc'}
+    )
+    return uniforms
+
+@app.get("/uniforms/{product_id}")
+async def get_uniforms_by_product(product_id: int, current_user: dict = Depends(get_current_user)):
+    """Get all uniform variants for a specific product"""
+    uniforms = await db.uniform.find_many(
+        where={'productId': product_id},
+        include={'product': True}
+    )
+    return uniforms
+
+@app.post("/uniforms")
+async def create_uniform(uniform: UniformCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new uniform variant"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Verify product exists
+    product = await db.product.find_unique(where={'productId': uniform.productId})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    new_uniform = await db.uniform.create(
+        data={
+            'productId': uniform.productId,
+            'sizeType': uniform.sizeType,
+            'gender': uniform.gender,
+            'type': uniform.type,
+            'buyer': '',  # This can be updated later when someone buys it
+        },
+        include={'product': True}
+    )
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="create",
+        entity_type="uniform",
+        entity_id=new_uniform.uniformId,
+        description=f"Created uniform variant: {uniform.type} ({uniform.gender}, {uniform.sizeType})"
+    )
+    
+    return new_uniform
+
+@app.put("/uniforms/{uniform_id}")
+async def update_uniform(uniform_id: int, uniform: UniformUpdate, current_user: dict = Depends(get_current_user)):
+    """Update a uniform variant"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    existing = await db.uniform.find_unique(where={'uniformId': uniform_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Uniform not found")
+    
+    update_data = {k: v for k, v in uniform.dict().items() if v is not None}
+    
+    updated_uniform = await db.uniform.update(
+        where={'uniformId': uniform_id},
+        data=update_data,
+        include={'product': True}
+    )
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="update",
+        entity_type="uniform",
+        entity_id=uniform_id,
+        description=f"Updated uniform variant: {updated_uniform.type} ({updated_uniform.gender}, {updated_uniform.sizeType})"
+    )
+    
+    return updated_uniform
+
+@app.delete("/uniforms/{uniform_id}")
+async def delete_uniform(uniform_id: int, current_user: dict = Depends(get_current_user)):
+    """Delete a uniform variant"""
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    existing = await db.uniform.find_unique(where={'uniformId': uniform_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Uniform not found")
+    
+    await db.uniform.delete(where={'uniformId': uniform_id})
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="delete",
+        entity_type="uniform",
+        entity_id=uniform_id,
+        description=f"Deleted uniform variant: {existing.type} ({existing.gender}, {existing.sizeType})"
+    )
+    
+    return {"message": "Uniform deleted successfully"}
 
 # ===== ORDERS CRUD =====
 @app.get("/orders")
