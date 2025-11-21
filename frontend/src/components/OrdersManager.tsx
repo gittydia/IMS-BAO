@@ -57,7 +57,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     amount: 0,
   });
 
-  const statuses = ["all", "pending", "processing", "shipped", "delivered", "cancelled"];
+  const statuses = ["all", "pending", "processing", "ready", "claimed", "cancelled"];
 
   useEffect(() => {
     loadOrders();
@@ -90,7 +90,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     const matchesSearch =
       String(order.orderId).toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+    const matchesStatus = statusFilter === "all" || order.status.toLowerCase() === statusFilter.toLowerCase();
 
     return matchesSearch && matchesStatus;
   });
@@ -171,9 +171,9 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
     status: string
   ): "default" | "secondary" | "destructive" | "outline" => {
     switch (status?.toLowerCase()) {
-      case "delivered":
+      case "claimed":
         return "default";
-      case "shipped":
+      case "ready":
         return "secondary";
       case "processing":
         return "outline";
@@ -188,6 +188,21 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
 
   const getProductName = (productId: number) => {
     return products.find(p => p.productId === productId)?.productName || "Unknown Product";
+  };
+
+  const getStudentInfo = (order: api.Order) => {
+    if (order.transactions && order.transactions.length > 0 && order.transactions[0].student) {
+      const student = order.transactions[0].student;
+      return `${student.firstname} ${student.lastname}`;
+    }
+    return "N/A";
+  };
+
+  const getStudentEmail = (order: api.Order) => {
+    if (order.transactions && order.transactions.length > 0 && order.transactions[0].student?.authUser) {
+      return order.transactions[0].student.authUser.email;
+    }
+    return "N/A";
   };
 
   if (isLoading) {
@@ -251,6 +266,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Order ID</TableHead>
+              <TableHead>Student</TableHead>
               <TableHead>Product</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Claim Date</TableHead>
@@ -261,7 +277,7 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
           <TableBody>
             {filteredOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                   No orders found.
                 </TableCell>
               </TableRow>
@@ -270,6 +286,12 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                 <TableRow key={order.orderId}>
                   <TableCell>
                     <span className="text-gray-900">BAO-{String(order.orderId).padStart(4, "0")}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="text-gray-900 font-medium">{getStudentInfo(order)}</p>
+                      <p className="text-xs text-gray-500">{getStudentEmail(order)}</p>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className="text-gray-700">{getProductName(order.productId)}</span>
@@ -334,6 +356,16 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                 <div>
                   <Label className="text-gray-600">Claim Date</Label>
                   <p className="text-gray-900">{new Date(viewingOrder.dateToClaim).toLocaleDateString()}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-gray-600">Student Name</Label>
+                  <p className="text-gray-900">{getStudentInfo(viewingOrder)}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600">Student Email</Label>
+                  <p className="text-gray-900">{getStudentEmail(viewingOrder)}</p>
                 </div>
               </div>
               <div>
@@ -435,8 +467,8 @@ export function OrdersManager({ userRole, userName }: OrdersManagerProps) {
                 >
                   <option value="pending">Pending</option>
                   <option value="processing">Processing</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="delivered">Delivered</option>
+                  <option value="ready">Ready</option>
+                  <option value="claimed">Claimed</option>
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
