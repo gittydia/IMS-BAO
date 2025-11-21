@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.staticfiles import StaticFiles
 from prisma import Prisma
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr
@@ -8,8 +9,15 @@ from datetime import datetime
 from decimal import Decimal
 import uvicorn
 import hashlib
+import uuid
+import os
+from pathlib import Path
 
 app = FastAPI(title="IMS-BAO API")
+
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = Path("uploads/products")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -19,6 +27,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded files
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Global database instance
 db = Prisma()
@@ -37,6 +48,31 @@ sessions = {}
 # Helper functions
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+def calculate_product_status(quantity: int) -> str:
+    """Calculate product status based on quantity"""
+    if quantity == 0:
+        return "out of stock"
+    elif quantity <= 10:
+        return "low stock"
+    else:
+        return "in stock"
+
+async def log_activity(user_id: int, user_email: str, action: str, entity_type: str, entity_id: int = None, description: str = ""):
+    """Log user activity to the database"""
+    try:
+        await db.activitylog.create(
+            data={
+                'userId': user_id,
+                'userEmail': user_email,
+                'action': action,
+                'entityType': entity_type,
+                'entityId': entity_id,
+                'description': description,
+            }
+        )
+    except Exception as e:
+        print(f"Failed to log activity: {e}")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return hash_password(plain_password) == hashed_password
@@ -87,6 +123,7 @@ class ProductCreate(BaseModel):
     price: float
     status: str
     quantity: int
+    imageUrl: Optional[str] = None
 
 class ProductUpdate(BaseModel):
     productName: Optional[str] = None
@@ -94,6 +131,7 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = None
     status: Optional[str] = None
     quantity: Optional[int] = None
+    imageUrl: Optional[str] = None
 
 class OrderCreate(BaseModel):
     productId: int
@@ -104,6 +142,16 @@ class OrderCreate(BaseModel):
 class OrderUpdate(BaseModel):
     dateClaimed: Optional[str] = None
     status: Optional[str] = None
+
+# ===== ACTIVITY LOGS =====
+@app.get("/activity-logs")
+async def get_activity_logs(limit: int = 10):
+    """Get recent activity logs"""
+    logs = await db.activitylog.find_many(
+        order={'createdAt': 'desc'},
+        take=limit
+    )
+    return logs
 
 @app.get("/")
 async def root():
@@ -279,6 +327,35 @@ async def delete_student(student_id: int, current_user: dict = Depends(get_curre
     await db.student.delete(where={'studentId': student_id})
     return {"message": "Student deleted successfully"}
 
+# ===== FILE UPLOAD =====
+@app.post("/upload-image")
+async def upload_image(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    # Only admins can upload images
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only images are allowed.")
+    
+    # Validate file size (max 5MB)
+    file_content = await file.read()
+    if len(file_content) > 5 * 1024 * 1024:  # 5MB
+        raise HTTPException(status_code=400, detail="File size exceeds 5MB limit.")
+    
+    # Generate unique filename
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = UPLOAD_DIR / unique_filename
+    
+    # Save file
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+    
+    # Return URL
+    return {"url": f"/uploads/products/{unique_filename}"}
+
 # ===== PRODUCTS CRUD =====
 @app.get("/products")
 async def get_products(current_user: dict = Depends(get_current_user)):
@@ -299,15 +376,30 @@ async def create_product(product: ProductCreate, current_user: dict = Depends(ge
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
+    # Auto-calculate status based on quantity
+    status = calculate_product_status(product.quantity)
+    
     new_product = await db.product.create(
         data={
             'productName': product.productName,
             'productCategory': product.productCategory,
             'price': Decimal(str(product.price)),
-            'status': product.status,
+            'status': status,
             'quantity': product.quantity,
+            'imageUrl': product.imageUrl,
         }
     )
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="create",
+        entity_type="product",
+        entity_id=new_product.productId,
+        description=f"Created product: {product.productName}"
+    )
+    
     return new_product
 
 @app.put("/products/{product_id}")
@@ -324,10 +416,25 @@ async def update_product(product_id: int, product: ProductUpdate, current_user: 
     if 'price' in update_data and update_data['price'] is not None:
         update_data['price'] = Decimal(str(update_data['price']))
     
+    # Auto-calculate status based on quantity if quantity is being updated
+    if 'quantity' in update_data:
+        update_data['status'] = calculate_product_status(update_data['quantity'])
+    
     updated_product = await db.product.update(
         where={'productId': product_id},
         data=update_data
     )
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="update",
+        entity_type="product",
+        entity_id=product_id,
+        description=f"Updated product: {existing.productName}"
+    )
+    
     return updated_product
 
 @app.delete("/products/{product_id}")
@@ -341,19 +448,54 @@ async def delete_product(product_id: int, current_user: dict = Depends(get_curre
         raise HTTPException(status_code=404, detail="Product not found")
     
     await db.product.delete(where={'productId': product_id})
+    
+    # Log activity
+    await log_activity(
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        action="delete",
+        entity_type="product",
+        entity_id=product_id,
+        description=f"Deleted product: {existing.productName}"
+    )
+    
     return {"message": "Product deleted successfully"}
 
 # ===== ORDERS CRUD =====
 @app.get("/orders")
 async def get_orders():
-    orders = await db.order.find_many(include={'product': True})
+    orders = await db.order.find_many(
+        include={
+            'product': True,
+            'transactions': {
+                'include': {
+                    'student': {
+                        'include': {
+                            'authUser': True
+                        }
+                    }
+                }
+            }
+        }
+    )
     return orders
 
 @app.get("/orders/{order_id}")
 async def get_order(order_id: int):
     order = await db.order.find_unique(
         where={'orderId': order_id},
-        include={'product': True}
+        include={
+            'product': True,
+            'transactions': {
+                'include': {
+                    'student': {
+                        'include': {
+                            'authUser': True
+                        }
+                    }
+                }
+            }
+        }
     )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -373,9 +515,16 @@ async def create_order(order: OrderCreate):
 
 @app.put("/orders/{order_id}")
 async def update_order(order_id: int, order: OrderUpdate):
-    existing = await db.order.find_unique(where={'orderId': order_id})
+    existing = await db.order.find_unique(
+        where={'orderId': order_id},
+        include={'product': True}
+    )
     if not existing:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Get the old status
+    old_status = existing.status.lower() if existing.status else ""
+    new_status = order.status.lower() if order.status else old_status
     
     update_data = {}
     if order.dateClaimed:
@@ -383,10 +532,49 @@ async def update_order(order_id: int, order: OrderUpdate):
     if order.status:
         update_data['status'] = order.status
     
+    # Handle stock adjustments when status changes to/from "claimed"
+    if old_status != new_status and existing.product:
+        # Status changed FROM claimed TO something else - ADD stock back
+        if old_status == "claimed" and new_status != "claimed":
+            await db.product.update(
+                where={'productId': existing.productId},
+                data={'quantity': {'increment': 1}}
+            )
+        
+        # Status changed TO claimed FROM something else - SUBTRACT stock
+        elif old_status != "claimed" and new_status == "claimed":
+            # Check if product has stock available
+            if existing.product.quantity > 0:
+                await db.product.update(
+                    where={'productId': existing.productId},
+                    data={'quantity': {'decrement': 1}}
+                )
+                # Auto-update product status based on new quantity
+                new_quantity = existing.product.quantity - 1
+                new_product_status = calculate_product_status(new_quantity)
+                await db.product.update(
+                    where={'productId': existing.productId},
+                    data={'status': new_product_status}
+                )
+            else:
+                raise HTTPException(status_code=400, detail="Product out of stock")
+    
     updated_order = await db.order.update(
         where={'orderId': order_id},
         data=update_data
     )
+    
+    # Log activity if status changed
+    if old_status != new_status:
+        await log_activity(
+            user_id=0,  # System action or could track actual user
+            user_email="system",
+            action="update",
+            entity_type="order",
+            entity_id=order_id,
+            description=f"Order #{order_id} status changed from {old_status} to {new_status}"
+        )
+    
     return updated_order
 
 @app.delete("/orders/{order_id}")
