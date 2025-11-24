@@ -596,40 +596,47 @@ export function ProductsManager() {
                         id="uniform-type"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                         value={uniformFormData.type}
-                        onChange={(e) => setUniformFormData({ ...uniformFormData, type: e.target.value })}
+                        onChange={(e) => {
+                          const newType = e.target.value;
+                          setUniformFormData({
+                            ...uniformFormData,
+                            type: newType,
+                            piece: (newType === "PE" || newType === "NSTP") ? "Shirt" : uniformFormData.piece
+                          });
+                        }}
                       >
                         <option value="Standard Uniform">Standard Uniform</option>
                         <option value="PE">PE</option>
+                        <option value="NSTP">NSTP</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="uniform-piece">Piece Type</Label>
+                      <select
+                        id="uniform-piece"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                        value={uniformFormData.piece}
+                        onChange={(e) => setUniformFormData({ ...uniformFormData, piece: e.target.value })}
+                      >
+                        <option value="Shirt">Shirt</option>
+                        <option value="Pants">Pants</option>
+                        <option value="Polo">Polo</option>
+                        <option value="Skirt">Skirt</option>
                       </select>
                     </div>
                     {uniformFormData.type === "Standard Uniform" && (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="uniform-piece">Piece Type</Label>
-                          <select
-                            id="uniform-piece"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                            value={uniformFormData.piece}
-                            onChange={(e) => setUniformFormData({ ...uniformFormData, piece: e.target.value })}
-                          >
-                            <option value="Shirt">Shirt</option>
-                            <option value="Pants">Pants</option>
-                            <option value="Polo">Polo</option>
-                          </select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="uniform-gender">Gender</Label>
-                          <select
-                            id="uniform-gender"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                            value={uniformFormData.gender}
-                            onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
-                          >
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                          </select>
-                        </div>
-                      </>
+                      <div className="space-y-2">
+                        <Label htmlFor="uniform-gender">Gender</Label>
+                        <select
+                          id="uniform-gender"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          value={uniformFormData.gender}
+                          onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
                     )}
                     <div className="space-y-2">
                       <Label htmlFor="uniform-size">Size</Label>
