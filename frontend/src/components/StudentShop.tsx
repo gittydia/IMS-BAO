@@ -103,9 +103,9 @@ export function StudentShop() {
     return matchesSearch && matchesCategory;
   });
 
-  // Group uniforms by type + gender combination
+  // Group uniforms by type + gender combination + productId
   const groupedUniforms = filteredUniforms.reduce((acc: any, uniform) => {
-    const key = `${uniform.type}-${uniform.gender}`;
+    const key = `${uniform.type}-${uniform.gender}-${uniform.productId}`;
     if (!acc[key]) {
       acc[key] = {
         type: uniform.type,
@@ -251,7 +251,7 @@ export function StudentShop() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {uniformGroups.map((group: any) => (
               <Card
-                key={`${group.type}-${group.gender}`}
+                key={`${group.type}-${group.gender}-${group.product.productId}`}
                 className="flex flex-col overflow-hidden rounded-lg shadow hover:shadow-lg transition-shadow"
                 style={{ height: "600px" }}
               >

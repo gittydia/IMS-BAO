@@ -58,6 +58,7 @@ export function ProductsManager() {
     sizeType: "M",
     gender: "Unisex",
     type: "Standard Uniform",
+    piece: "Shirt",
   });
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -103,6 +104,7 @@ export function ProductsManager() {
       sizeType: "M",
       gender: "Unisex",
       type: "Standard Uniform",
+      piece: "Shirt",
     });
     setIsUniformDialogOpen(true);
   };
@@ -132,6 +134,7 @@ export function ProductsManager() {
         sizeType: "M",
         gender: "Unisex",
         type: "Standard Uniform",
+        piece: "Shirt",
       });
       loadUniforms(selectedProductForUniform.productId);
     } catch (error) {
@@ -208,6 +211,7 @@ export function ProductsManager() {
         sizeType: "M",
         gender: "Unisex",
         type: "Standard Uniform",
+        piece: "Shirt",
       });
     }
     setIsDialogOpen(true);
@@ -300,16 +304,16 @@ export function ProductsManager() {
       let productName = formData.productName;
       if (formData.productCategory === "Uniform") {
         if (uniformFormData.type === "Standard Uniform") {
-          productName = `${uniformFormData.gender} ${uniformFormData.type} ${uniformFormData.sizeType}`;
+          productName = `${uniformFormData.gender} ${uniformFormData.type} ${uniformFormData.piece} ${uniformFormData.sizeType}`;
         } else {
-          productName = `${uniformFormData.type} ${uniformFormData.sizeType}`;
+          productName = `${uniformFormData.type} ${uniformFormData.piece} ${uniformFormData.sizeType}`;
         }
       }
       
       let newProduct = null;
       
       if (editingProduct) {
-        await api.updateProduct(editingProduct.productId, { ...formData, status, imageUrl, productName }, productName);
+        await api.updateProduct(editingProduct.productId, { ...formData, status, imageUrl, productName });
         toast.success("Product updated successfully!");
       } else {
         const createdProduct = await api.createProduct(productName, formData.productCategory, formData.price, formData.quantity, status, imageUrl);
@@ -599,18 +603,33 @@ export function ProductsManager() {
                       </select>
                     </div>
                     {uniformFormData.type === "Standard Uniform" && (
-                      <div className="space-y-2">
-                        <Label htmlFor="uniform-gender">Gender</Label>
-                        <select
-                          id="uniform-gender"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                          value={uniformFormData.gender}
-                          onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
-                        >
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                        </select>
-                      </div>
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="uniform-piece">Piece Type</Label>
+                          <select
+                            id="uniform-piece"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                            value={uniformFormData.piece}
+                            onChange={(e) => setUniformFormData({ ...uniformFormData, piece: e.target.value })}
+                          >
+                            <option value="Shirt">Shirt</option>
+                            <option value="Pants">Pants</option>
+                            <option value="Polo">Polo</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="uniform-gender">Gender</Label>
+                          <select
+                            id="uniform-gender"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                            value={uniformFormData.gender}
+                            onChange={(e) => setUniformFormData({ ...uniformFormData, gender: e.target.value })}
+                          >
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                          </select>
+                        </div>
+                      </>
                     )}
                     <div className="space-y-2">
                       <Label htmlFor="uniform-size">Size</Label>
